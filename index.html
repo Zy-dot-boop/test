@@ -1,0 +1,333 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Baby Sound Translator</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background-color: #f0f0f0;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            margin: 0;
+            flex-direction: column;
+            transition: background-color 0.3s, color 0.3s;
+        }
+        .container {
+            text-align: center;
+            background-color: white;
+            padding: 20px;
+            border-radius: 10px;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+            max-width: 400px;
+            width: 100%;
+            transition: background-color 0.3s, color 0.3s;
+        }
+        /* Training box at the top */
+        .training-box {
+            background-color: #007BFF;
+            color: white;
+            font-size: 24px;
+            font-weight: bold;
+            padding: 20px;
+            border-radius: 10px;
+            margin-bottom: 20px;
+        }
+        /* Translation box below */
+        .translation-box {
+            background-color: #4CAF50;
+            color: white;
+            font-size: 24px;
+            font-weight: bold;
+            padding: 20px;
+            border-radius: 10px;
+            margin-top: 20px;
+        }
+        button {
+            padding: 10px 20px;
+            font-size: 16px;
+            cursor: pointer;
+            margin: 10px;
+            background-color: #28a745;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            transition: background-color 0.3s;
+        }
+        button:hover {
+            background-color: #218838;
+        }
+        #status {
+            margin-top: 20px;
+            font-size: 16px;
+        }
+        /* Input for meaning */
+        #meaningInput {
+            margin-top: 20px;
+            padding: 10px;
+            width: 60%;
+            font-size: 16px;
+            border: 1px solid #ccc;
+            border-radius: 5px;
+        }
+        /* Submit button beside the input */
+        #submitMeaningBtn {
+            padding: 10px 20px;
+            font-size: 16px;
+            cursor: pointer;
+            margin-left: 10px;
+            background-color: #007BFF;
+            color: white;
+            border: none;
+            border-radius: 5px;
+        }
+        /* Audio Player Box */
+        #audioContainer {
+            margin-top: 20px;
+            display: none; /* Hidden by default, shown after recording */
+        }
+        audio {
+            width: 100%;
+            margin-top: 10px;
+        }
+        /* Dark mode styles */
+        body.dark-mode {
+            background-color: #181818;
+            color: white;
+        }
+        .container.dark-mode {
+            background-color: #2C2C2C;
+        }
+        .training-box.dark-mode {
+            background-color: #1A73E8;
+        }
+        .translation-box.dark-mode {
+            background-color: #388E3C;
+        }
+        button.dark-mode {
+            background-color: #6200EA;
+        }
+        button.dark-mode:hover {
+            background-color: #3700B3;
+        }
+    </style>
+</head>
+<body>
+    <div class="container" id="container">
+        <!-- Training box at the top -->
+        <div class="training-box" id="training">
+            Training in progress...
+        </div>
+
+        <!-- Record button -->
+        <button id="recordBtn">Start Recording</button>
+
+        <!-- Export Data Button -->
+        <button id="exportBtn">Export Data</button>
+        <button id="listenAndTranslateBtn">Listen and Translate</button>
+
+        <!-- Dark/Light Mode Toggle -->
+        <button id="toggleModeBtn">Switch to Dark Mode</button>
+
+        <div id="status"></div>
+
+        <!-- Translation box below -->
+        <div class="translation-box" id="translation">
+            Translation will appear here...
+        </div>
+
+        <!-- Input field for user to enter meaning after stopping recording -->
+        <div id="meaningContainer" style="display: none;">
+            <label for="meaningInput">What might be the meaning of this?</label>
+            <input type="text" id="meaningInput" placeholder="Enter meaning here">
+            <button id="submitMeaningBtn">Submit</button>
+        </div>
+
+        <!-- Audio Player for recorded sound -->
+        <div id="audioContainer">
+            <audio id="audioPlayer" controls>
+                Your browser does not support the audio element.
+            </audio>
+            <p>Translation:</p>
+            <div id="audioTranslation">Translation will appear here...</div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs"></script>
+    <script>
+        let isRecording = false;
+        let mediaRecorder;
+        let audioChunks = [];
+        let audioBlob;
+        let audioUrl;
+
+        // Function to retrieve data from the cookie
+        function getCookie(name) {
+            const nameEQ = name + "=";
+            const ca = document.cookie.split(';');
+            for (let i = 0; i < ca.length; i++) {
+                let c = ca[i].trim();
+                if (c.indexOf(nameEQ) === 0) return c.substring(nameEQ.length, c.length);
+            }
+            return null;
+        }
+
+        // Function to store data into the cookie
+        function setCookie(name, value, days) {
+            const expires = new Date();
+            expires.setTime(expires.getTime() + (days * 24 * 60 * 60 * 1000));
+            document.cookie = `${name}=${value};expires=${expires.toUTCString()};path=/`;
+        }
+
+        // Toggle record button and start/stop recording
+        document.getElementById('recordBtn').onclick = () => {
+            if (isRecording) {
+                mediaRecorder.stop();
+                document.getElementById('status').innerText = 'Processing...';
+                isRecording = false;
+                document.getElementById('recordBtn').innerText = 'Start Recording'; // Change button text
+                document.getElementById('status').innerText = ''; // Clear status after stop
+                // Show alert and input for meaning after stopping recording
+                alert("What might be the meaning of this?");
+                document.getElementById('meaningContainer').style.display = 'block';
+            } else {
+                // Show an alert when training starts
+                alert("Training is starting. Please make sure the sound is being recorded.");
+                startRecording();
+                document.getElementById('status').innerText = 'Recording...';
+                isRecording = true;
+                document.getElementById('recordBtn').innerText = 'Stop Recording'; // Change button text
+            }
+        };
+
+        async function startRecording() {
+            audioChunks = [];
+            const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+            mediaRecorder = new MediaRecorder(stream);
+
+            mediaRecorder.ondataavailable = event => {
+                audioChunks.push(event.data);
+            };
+
+            mediaRecorder.onstop = async () => {
+                audioBlob = new Blob(audioChunks, { type: 'audio/wav' });
+                audioUrl = URL.createObjectURL(audioBlob);
+
+                // Set the audio player to the recorded sound
+                document.getElementById('audioPlayer').src = audioUrl;
+                document.getElementById('audioContainer').style.display = 'block';
+
+                // Optionally process the audio here and display the translation
+                await processAudio(audioBlob);
+            };
+
+            mediaRecorder.start();
+        }
+
+        // Listen and Translate Button functionality
+        document.getElementById('listenAndTranslateBtn').onclick = async () => {
+            if (audioBlob) {
+                document.getElementById('status').innerText = 'Translating...';
+                // Process the recorded audio and get the translation
+                await processAudio(audioBlob);
+            } else {
+                alert('No audio recorded. Please record a sound first.');
+            }
+        };
+
+        async function processAudio(audioBlob) {
+            // Convert the audio Blob into an array buffer
+            const arrayBuffer = await audioBlob.arrayBuffer();
+            const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+            const audioBuffer = await audioContext.decodeAudioData(arrayBuffer);
+            
+            // Feature extraction (this is a simple placeholder for real feature extraction)
+            const audioData = audioBuffer.getChannelData(0); // Get the first channel
+            const mfcc = extractMFCC(audioData, audioContext.sampleRate);
+
+            // Load the pre-trained model (you can upload your trained model here)
+            const model = await tf.loadLayersModel('model.json');
+
+            // Process the MFCC features (reshape, etc.)
+            const features = tf.tensor(mfcc).reshape([1, mfcc.length]);
+
+            // Prediction
+            const prediction = model.predict(features).dataSync();
+            const labelIndex = prediction.indexOf(Math.max(...prediction));
+
+            // Translation based on the model's output
+            const labels = ['Hungry', 'Happy', 'Tired', 'Content']; // Example categories
+            const translation = labels[labelIndex];
+            document.getElementById('audioTranslation').innerText = `Translation: ${translation}`;
+        }
+
+        function extractMFCC(audioData, sampleRate) {
+            // Placeholder for MFCC extraction logic
+            return Array(13).fill(Math.random()); // Simulated MFCC features
+        }
+
+        // Submit Meaning and Save Data in Cookies
+        document.getElementById('submitMeaningBtn').onclick = () => {
+            const meaning = document.getElementById('meaningInput').value;
+
+            if (meaning.trim()) {
+                const soundData = {
+                    meaning: meaning,
+                    timestamp: new Date().toISOString()
+                };
+
+                // Retrieve previous recordings or start a new array
+                let allData = JSON.parse(getCookie('babySoundData') || '[]');
+                allData.push(soundData);
+
+                // Save all sound data back to cookies
+                setCookie('babySoundData', JSON.stringify(allData), 365);
+
+                // Clear the input field and hide the meaning container
+                document.getElementById('meaningInput').value = '';
+                document.getElementById('meaningContainer').style.display = 'none';
+                alert('Meaning saved successfully!');
+            } else {
+                alert('Please enter a meaning.');
+            }
+        };
+
+        // Export Data Button functionality
+        document.getElementById('exportBtn').onclick = () => {
+            // Retrieve all saved baby sound data from cookies
+            const soundData = getCookie('babySoundData');
+            if (soundData) {
+                const data = JSON.parse(soundData);
+
+                // Create a Blob from the data
+                const jsonBlob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+
+                // Create a download link
+                const link = document.createElement('a');
+                link.href = URL.createObjectURL(jsonBlob);
+                link.download = 'baby_sound_data.json';  // Default filename for the downloaded file
+
+                // Trigger the download
+                link.click();
+            } else {
+                alert('No data available to export.');
+            }
+        };
+
+        // Dark/Light Mode Toggle
+        document.getElementById('toggleModeBtn').onclick = () => {
+            const body = document.body;
+            body.classList.toggle('dark-mode');
+            const mode = body.classList.contains('dark-mode') ? 'dark' : 'light';
+            setCookie('theme', mode, 365);
+            document.getElementById('toggleModeBtn').innerText = mode === 'dark' ? 'Switch to Light Mode' : 'Switch to Dark Mode';
+        };
+
+    </script>
+</body>
+</html>
+
+better code i think it works
