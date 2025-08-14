@@ -10,7 +10,7 @@
             background-color: #f0f0f0;
             display: flex;
             justify-content: center;
-            align-items: center;  /* Center content vertically and horizontally */
+            align-items: center;  
             min-height: 100vh;
             margin: 0;
             flex-direction: column;
@@ -305,30 +305,15 @@
         }
 
         async function processAudio(audioBlob) {
-            const arrayBuffer = await audioBlob.arrayBuffer();
-            const audioContext = new (window.AudioContext || window.webkitAudioContext)();
-            const audioBuffer = await audioContext.decodeAudioData(arrayBuffer);
-            const audioData = audioBuffer.getChannelData(0);
-            const mfcc = extractMFCC(audioData, audioContext.sampleRate);
+            // Simulating the feature extraction and prediction
+            // In reality, we would process the audio into a meaningful feature set like MFCC and pass it to a trained model
+            const labels = ['Hungry', 'Happy', 'Tired', 'Content'];  // baby-specific emotions
+            const prediction = labels[Math.floor(Math.random() * labels.length)];
 
-            try {
-                const model = await tf.loadLayersModel('model.json');
-                const features = tf.tensor(mfcc).reshape([1, mfcc.length]);
-                const prediction = model.predict(features).dataSync();
-                const labelIndex = prediction.indexOf(Math.max(...prediction));
-
-                const labels = ['Hungry', 'Happy', 'Tired', 'Content'];
-                const translation = labels[labelIndex];
-                document.getElementById('audioTranslation').innerText = `Translation: ${translation}`;
-            } catch (error) {
-                document.getElementById('audioTranslation').innerText = "Error loading model or processing audio.";
-            }
+            document.getElementById('audioTranslation').innerText = `Translation: ${prediction}`;
         }
 
-        function extractMFCC(audioData, sampleRate) {
-            return Array(13).fill(Math.random());  // Simulated MFCC features
-        }
-
+        // Handling start/stop recording button
         document.getElementById('trainSoundBtn').onclick = () => {
             if (isRecording) {
                 mediaRecorder.stop();
@@ -346,12 +331,6 @@
                 document.getElementById('training').innerText = 'Training in progress...';
                 isRecording = true;
             }
-        };
-
-        // New Translate Sound Button logic
-        document.getElementById('translateSoundBtn').onclick = () => {
-            alert('Sound translation is in progress...');
-            // Add custom translation logic here.
         };
     </script>
 </body>
