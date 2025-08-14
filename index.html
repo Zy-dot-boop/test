@@ -232,7 +232,7 @@
             meaningList.innerHTML = '';  // Clear previous list
             trainingData.forEach((item, index) => {
                 const li = document.createElement('li');
-                li.textContent = ${index + 1}. ${item.meaning};
+                li.textContent = `${index + 1}. ${item.meaning}`;
                 
                 // Link to play the saved audio file
                 const audioLink = document.createElement('a');
@@ -290,7 +290,7 @@
                     document.getElementById('progressBar').value = recordingTime;
                     const minutes = Math.floor(recordingTime / 60);
                     const seconds = recordingTime % 60;
-                    document.getElementById('timer').innerText = ${minutes}:${seconds < 10 ? '0' + seconds : seconds};
+                    document.getElementById('timer').innerText = `${minutes}:${seconds < 10 ? '0' + seconds : seconds}`;
                 } else {
                     clearInterval(timerInterval);
                 }
@@ -319,7 +319,7 @@
 
                 const labels = ['Hungry', 'Happy', 'Tired', 'Content'];
                 const translation = labels[labelIndex];
-                document.getElementById('audioTranslation').innerText = Translation: ${translation};
+                document.getElementById('audioTranslation').innerText = `Translation: ${translation}`;
             } catch (error) {
                 document.getElementById('audioTranslation').innerText = "Error loading model or processing audio.";
             }
