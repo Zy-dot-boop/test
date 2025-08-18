@@ -1,369 +1,279 @@
-<!DOCTYPE html> 
+<!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Baby Sound Translator</title>
-    <style>
-        body {
-            font-family: Arial, sans-serif;
-            background-color: #f0f0f0;
-            display: flex;
-            justify-content: center;
-            align-items: center;  /* Center content vertically and horizontally */
-            min-height: 100vh;
-            margin: 0;
-            flex-direction: column;
-            transition: background-color 0.3s, color 0.3s;
-        }
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Baby Sound Translator</title>
+  <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs"></script> <!-- TensorFlow.js -->
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      background-color: #f0f0f0;
+      transition: background-color 0.3s, color 0.3s;
+      color: #000;
+      padding: 20px;
+      min-height: 100vh;
+    }
 
-        .container {
-            text-align: center;
-            background-color: white;
-            padding: 20px;
-            border-radius: 10px;
-            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
-            width: 90%;
-            max-width: 800px;
-            margin-top: 20px;
-            transition: background-color 0.3s, color 0.3s;
-            flex-grow: 1;
-        }
+    .dark-mode {
+      background-color: #333;
+      color: #fff;
+    }
 
-        .training-box {
-            background-color: #007BFF;
-            color: white;
-            font-size: 24px;
-            font-weight: bold;
-            padding: 20px;
-            border-radius: 10px;
-            margin-bottom: 20px;
-        }
+    .container {
+      text-align: center;
+    }
 
-        .translation-box {
-            background-color: #4CAF50;
-            color: white;
-            font-size: 24px;
-            font-weight: bold;
-            padding: 20px;
-            border-radius: 10px;
-            margin-top: 20px;
-        }
+    button {
+      padding: 10px 20px;
+      font-size: 16px;
+      margin: 10px;
+      cursor: pointer;
+    }
 
-        button {
-            padding: 10px 20px;
-            font-size: 16px;
-            cursor: pointer;
-            margin: 10px;
-            background-color: #28a745;
-            color: white;
-            border: none;
-            border-radius: 5px;
-            transition: background-color 0.3s;
-        }
+    .mode-btn {
+      background-color: #008cba;
+      color: white;
+      border: none;
+      border-radius: 5px;
+    }
 
-        button:hover {
-            background-color: #218838;
-        }
+    .train-btn {
+      background-color: #f0ad4e;
+      color: white;
+    }
 
-        #status {
-            margin-top: 20px;
-            font-size: 16px;
-        }
+    .export-btn {
+      background-color: #4CAF50;
+      color: white;
+    }
 
-        #meaningInput {
-            margin-top: 20px;
-            padding: 10px;
-            width: 60%;
-            font-size: 16px;
-            border: 1px solid #ccc;
-            border-radius: 5px;
-        }
+    .input-box {
+      margin-top: 20px;
+    }
 
-        #submitMeaningBtn {
-            padding: 10px 20px;
-            font-size: 16px;
-            cursor: pointer;
-            margin-left: 10px;
-            background-color: #007BFF;
-            color: white;
-            border: none;
-            border-radius: 5px;
-        }
+    input[type="text"] {
+      padding: 10px;
+      font-size: 16px;
+      width: 80%;
+      margin: 10px 0;
+    }
 
-        #audioContainer {
-            margin-top: 20px;
-            display: none;
-        }
+    .recording-status {
+      font-size: 18px;
+      color: #f0ad4e;
+    }
 
-        audio {
-            width: 100%;
-            margin-top: 10px;
-        }
-
-        body.dark-mode {
-            background-color: #181818;
-            color: white;
-        }
-
-        .container.dark-mode {
-            background-color: #2C2C2C;
-        }
-
-        .training-box.dark-mode {
-            background-color: #1A73E8;
-        }
-
-        .translation-box.dark-mode {
-            background-color: #388E3C;
-        }
-
-        button.dark-mode {
-            background-color: #6200EA;
-        }
-
-        button.dark-mode:hover {
-            background-color: #3700B3;
-        }
-
-    </style>
+    #translation {
+      margin-top: 20px;
+      font-size: 1.5em;
+      font-weight: bold;
+    }
+  </style>
 </head>
 <body>
-    <div class="container" id="container">
-        <div class="training-box" id="training">
-            Listening and translating...
-        </div>
+  <div class="container">
+    <h1>Baby Sound Translator</h1>
 
-        <!-- Dark mode toggle -->
-        <button id="darkModeBtn">Dark Mode</button>
-        <!-- Export button to download data -->
-        <button id="exportBtn">Export Data</button>
-        <!-- Button to delete all meanings -->
-        <button id="deleteAllBtn">Delete All Meanings</button>
+    <!-- Dark/Light Mode Toggle -->
+    <button class="mode-btn" onclick="toggleMode()">Toggle Dark/Light Mode</button>
 
-        <div id="status"></div>
+    <!-- Recording Section -->
+    <div class="train-container">
+      <h2>Record and Train Baby Sounds</h2>
+      <button class="train-btn" id="startRecordingBtn" onclick="startRecording()">Start Recording</button>
+      <button class="train-btn" id="stopRecordingBtn" onclick="stopRecording()" disabled>Stop Recording</button>
 
-        <div class="translation-box" id="translation">
-            Translation will appear here...
-        </div>
+      <div class="input-box">
+        <input type="text" id="soundMeaning" placeholder="Enter the meaning of the sound">
+        <button class="train-btn" onclick="saveSound()">Save Sound</button>
+      </div>
 
-        <div id="meaningContainer" style="display: none;">
-            <label for="meaningInput">What might be the meaning of this?</label>
-            <input type="text" id="meaningInput" placeholder="Enter meaning here">
-            <button id="addMeaningBtn">Add Meaning</button>
-            <button id="submitAllBtn" style="display:none;">Submit All Data</button>
-            <ul id="meaningList"></ul>
-        </div>
-
-        <!-- Progress Bar -->
-        <div id="progressContainer" style="display:none;">
-            <progress id="progressBar" value="0" max="100"></progress>
-            <span id="timer">00:00</span>
-        </div>
-
-        <div id="audioContainer">
-            <audio id="audioPlayer" controls>
-                Your browser does not support the audio element.
-            </audio>
-            <p>Translation:</p>
-            <div id="audioTranslation">Translation will appear here...</div>
-        </div>
-
-        <!-- New "Train Sound" Button -->
-        <button id="trainSoundBtn">Start Training</button>
-
-        <!-- New "Translate Sound" Button -->
-        <button id="translateSoundBtn">Translate Sound</button>
+      <div class="recording-status" id="recordingStatus">Recording status: Idle</div>
     </div>
 
-    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs"></script>
-    <script>
-        let isRecording = false;
-        let mediaRecorder;
-        let audioChunks = [];
-        let audioBlob;
-        let audioUrl;
-        let recordingTime = 0;  // Time counter for recording session
-        let trainingData = JSON.parse(localStorage.getItem('trainingData')) || []; // Load training data if available
+    <!-- Translation Output -->
+    <div id="translation">Waiting for sound...</div>
 
-        // Start listening as soon as the page loads
-        window.onload = () => {
-            alert("System is ready to listen and translate.");
-            startRecording();
-            document.getElementById('status').innerText = 'Recording...';
-            document.getElementById('training').innerText = 'Listening and translating...';
-            displayTrainingData(); // Display meanings on load
-        };
+    <!-- Export Data Button -->
+    <button class="export-btn" onclick="exportData()">Export Data</button>
 
-        // Handle Dark Mode toggle
-        document.getElementById('darkModeBtn').onclick = () => {
-            document.body.classList.toggle('dark-mode');
-            document.getElementById('container').classList.toggle('dark-mode');
-            const isDarkMode = document.body.classList.contains('dark-mode');
-            localStorage.setItem('darkMode', isDarkMode ? 'true' : 'false');
-        };
+  </div>
 
-        if (localStorage.getItem('darkMode') === 'true') {
-            document.body.classList.add('dark-mode');
-            document.getElementById('container').classList.add('dark-mode');
+  <script>
+    let isRecording = false;
+    let soundData = loadSavedData(); // Load saved sound data
+    let audioContext;
+    let analyser;
+    let microphone;
+    let dataArray;
+    let currentRecording = null;
+
+    // Initialize the audio context and microphone
+    window.onload = function() {
+      // Initialize audio context
+      audioContext = new (window.AudioContext || window.webkitAudioContext)();
+      analyser = audioContext.createAnalyser();
+
+      // Check the mode from cookies
+      const currentMode = getCookie("mode");
+      if (currentMode) {
+        document.body.classList.toggle("dark-mode", currentMode === "dark");
+      }
+
+      // Start listening to audio input
+      navigator.mediaDevices.getUserMedia({ audio: true })
+        .then((stream) => {
+          microphone = audioContext.createMediaStreamSource(stream);
+          microphone.connect(analyser);
+          analyser.fftSize = 256;
+          dataArray = new Uint8Array(analyser.frequencyBinCount);
+
+          listenForSounds();  // Start listening immediately after the page loads
+        })
+        .catch(err => {
+          console.error('Error accessing audio devices:', err);
+        });
+
+      // Load the model if it exists in localStorage
+      loadModel();
+    }
+
+    // Continuously process the audio data and listen for baby sounds
+    function listenForSounds() {
+      analyser.getByteFrequencyData(dataArray);
+      const soundLevel = Math.max(...dataArray);
+
+      // If sound is detected
+      if (soundLevel > 100 && currentRecording === null) {
+        classifySound(dataArray);
+      } else {
+        setTimeout(listenForSounds, 20000); // wait 20s before checking again
+      }
+    }
+
+    // Extract features from the frequency data
+    function extractFeatures(data) {
+      const averageFrequency = data.reduce((sum, value) => sum + value, 0) / data.length;
+      return [averageFrequency];
+    }
+
+    // Classify the sound using the model
+    function classifySound(features) {
+      const soundFeatures = extractFeatures(features);
+
+      let bestMatch = null;
+      let bestDiff = Infinity;
+
+      soundData.forEach(item => {
+        // Fake similarity: compare lengths of stored dataURL
+        let diff = Math.abs(item.audio.length - soundFeatures[0] * 100);
+        if (diff < bestDiff) {
+          bestDiff = diff;
+          bestMatch = item;
         }
+      });
 
-        // Handle the 'Add Meaning' button click
-        document.getElementById('addMeaningBtn').onclick = () => {
-            const meaningInput = document.getElementById('meaningInput').value;
-            if (meaningInput.trim() && audioBlob) {  // Check that a meaning and sound are available
-                const soundData = {
-                    audio: audioUrl,  // Save the audio URL or blob
-                    meaning: meaningInput,
-                };
-                trainingData.push(soundData);
-                localStorage.setItem('trainingData', JSON.stringify(trainingData)); // Save to localStorage
-                
-                // Clear input fields and update display
-                document.getElementById('meaningInput').value = '';
-                document.getElementById('meaningList').innerHTML = '';  // Reset list
-                displayTrainingData();  // Re-display the saved training data
-            } else {
-                alert("Please record a sound first and enter a meaning.");
-            }
+      if (bestMatch && bestDiff < 500) {
+        document.getElementById("translation").innerText = "Translation: " + bestMatch.meaning;
+      } else {
+        alert("Sound detected but couldn't be recognized!");
+        document.getElementById("translation").innerText = "Translation: Unknown sound detected.";
+      }
+    }
+
+    // Start recording the sound
+    function startRecording() {
+      isRecording = true;
+      document.getElementById("startRecordingBtn").disabled = true;
+      document.getElementById("stopRecordingBtn").disabled = false;
+      document.getElementById("recordingStatus").innerText = "Recording... Please make a sound.";
+    }
+
+    // Stop recording
+    function stopRecording() {
+      isRecording = false;
+      document.getElementById("startRecordingBtn").disabled = false;
+      document.getElementById("stopRecordingBtn").disabled = true;
+      document.getElementById("recordingStatus").innerText = "Recording stopped. Please enter the meaning.";
+    }
+
+    // Save sound and its meaning
+    function saveSound() {
+      const soundMeaning = document.getElementById("soundMeaning").value.trim();
+      if (soundMeaning && currentRecording) {
+        const reader = new FileReader();
+        reader.onload = () => {
+          soundData.push({ audio: reader.result, meaning: soundMeaning });
+          saveDataToLocalStorage();
+          alert("Sound saved successfully!");
         };
+        reader.readAsDataURL(currentRecording);
+        document.getElementById("soundMeaning").value = "";
+      } else {
+        alert("Please record and enter a meaning for the sound.");
+      }
+    }
 
-        // Function to display all stored training data (audio + meaning)
-        function displayTrainingData() {
-            const meaningList = document.getElementById('meaningList');
-            meaningList.innerHTML = '';  // Clear previous list
-            trainingData.forEach((item, index) => {
-                const li = document.createElement('li');
-                li.textContent = `${index + 1}. ${item.meaning}`;
-                
-                // Link to play the saved audio file
-                const audioLink = document.createElement('a');
-                audioLink.href = item.audio;
-                audioLink.textContent = ' [Play Sound]';
-                audioLink.target = '_blank'; // Open audio in a new tab for playing
-                li.appendChild(audioLink);
+    // Export the recorded data
+    function exportData() {
+      if (soundData.length === 0) {
+        alert("No data to export.");
+        return;
+      }
+      const dataBlob = new Blob([JSON.stringify(soundData, null, 2)], { type: 'application/json' });
+      const link = document.createElement('a');
+      link.href = URL.createObjectURL(dataBlob);
+      link.download = 'baby-sound-data.json';
+      link.click();
+    }
 
-                meaningList.appendChild(li);
-            });
-        }
+    // Save sound data to localStorage
+    function saveDataToLocalStorage() {
+      localStorage.setItem("soundData", JSON.stringify(soundData));
+    }
 
-        // Function to handle "Export Data" button click (export training data as JSON)
-        document.getElementById('exportBtn').onclick = () => {
-            if (trainingData.length > 0) {
-                const jsonBlob = new Blob([JSON.stringify(trainingData, null, 2)], { type: 'application/json' });
-                const link = document.createElement('a');
-                link.href = URL.createObjectURL(jsonBlob);
-                link.download = 'baby_sound_training_data.json';  // Export file name
-                link.click();
-            } else {
-                alert('No training data available to export.');
-            }
-        };
+    // Load sound data from localStorage
+    function loadSavedData() {
+      const savedData = localStorage.getItem("soundData");
+      return savedData ? JSON.parse(savedData) : [];
+    }
 
-        // New "Delete All Meanings" button functionality
-        document.getElementById('deleteAllBtn').onclick = () => {
-            if (confirm('Are you sure you want to delete all meanings? This action cannot be undone.')) {
-                trainingData = [];
-                localStorage.setItem('trainingData', JSON.stringify(trainingData));  // Clear the saved data
-                displayTrainingData();  // Update display
-            }
-        };
+    // Load the model from localStorage
+    function loadModel() {
+      tf.loadLayersModel('localstorage://baby-sound-model').then((loadedModel) => {
+        model = loadedModel;
+        console.log('Model loaded!');
+      }).catch(() => {
+        console.log('No saved model found.');
+      });
+    }
 
-        async function startRecording() {
-            audioChunks = [];
-            const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-            mediaRecorder = new MediaRecorder(stream);
+    // Toggle Dark/Light Mode
+    function toggleMode() {
+      document.body.classList.toggle("dark-mode");
+      // Save mode preference in cookie
+      setCookie("mode", document.body.classList.contains("dark-mode") ? "dark" : "light", 365);
+    }
 
-            mediaRecorder.ondataavailable = event => {
-                audioChunks.push(event.data);
-            };
+    // Cookie functions
+    function setCookie(name, value, days) {
+      const expires = new Date();
+      expires.setTime(expires.getTime() + (days * 24 * 60 * 60 * 1000));
+      document.cookie = `${name}=${value};expires=${expires.toUTCString()};path=/`;
+    }
 
-            mediaRecorder.onstop = async () => {
-                audioBlob = new Blob(audioChunks, { type: 'audio/wav' });
-                audioUrl = URL.createObjectURL(audioBlob);
-                document.getElementById('audioPlayer').src = audioUrl;
-                document.getElementById('audioContainer').style.display = 'block';
-                await processAudio(audioBlob);
-
-                // Ask for the meaning after training stops
-                alert('What is the meaning of this sound? Please enter the meaning below.');
-                document.getElementById('meaningContainer').style.display = 'block';
-            };
-
-            document.getElementById('progressContainer').style.display = 'block';
-            document.getElementById('progressBar').value = 0;
-            recordingTime = 0;
-            mediaRecorder.start();
-
-            const timerInterval = setInterval(() => {
-                if (recordingTime < 100) {
-                    recordingTime++;
-                    document.getElementById('progressBar').value = recordingTime;
-                    const minutes = Math.floor(recordingTime / 60);
-                    const seconds = recordingTime % 60;
-                    document.getElementById('timer').innerText = `${minutes}:${seconds < 10 ? '0' + seconds : seconds}`;
-                } else {
-                    clearInterval(timerInterval);
-                }
-            }, 100);
-
-            setTimeout(() => {
-                if (isRecording) {
-                    mediaRecorder.stop();
-                    document.getElementById('status').innerText = 'Processing audio...';
-                }
-            }, 5000);
-        }
-
-        async function processAudio(audioBlob) {
-            const arrayBuffer = await audioBlob.arrayBuffer();
-            const audioContext = new (window.AudioContext || window.webkitAudioContext)();
-            const audioBuffer = await audioContext.decodeAudioData(arrayBuffer);
-            const audioData = audioBuffer.getChannelData(0);
-            const mfcc = extractMFCC(audioData, audioContext.sampleRate);
-
-            try {
-                const model = await tf.loadLayersModel('model.json');
-                const features = tf.tensor(mfcc).reshape([1, mfcc.length]);
-                const prediction = model.predict(features).dataSync();
-                const labelIndex = prediction.indexOf(Math.max(...prediction));
-
-                const labels = ['Hungry', 'Happy', 'Tired', 'Content'];
-                const translation = labels[labelIndex];
-                document.getElementById('audioTranslation').innerText = `Translation: ${translation}`;
-            } catch (error) {
-                document.getElementById('audioTranslation').innerText = "Error loading model or processing audio.";
-            }
-        }
-
-        function extractMFCC(audioData, sampleRate) {
-            return Array(13).fill(Math.random());  // Simulated MFCC features
-        }
-
-        document.getElementById('trainSoundBtn').onclick = () => {
-            if (isRecording) {
-                mediaRecorder.stop();
-                document.getElementById('trainSoundBtn').innerText = 'Start Training';
-                document.getElementById('status').innerText = 'Training stopped.';
-                document.getElementById('training').innerText = 'Listening and translating...';
-                isRecording = false;
-                alert('What is the meaning of this sound? Please enter the meaning below.');
-                document.getElementById('meaningContainer').style.display = 'block';
-            } else {
-                alert("Starting training...");
-                startRecording();
-                document.getElementById('trainSoundBtn').innerText = 'Stop Training';
-                document.getElementById('status').innerText = 'Recording...';
-                document.getElementById('training').innerText = 'Training in progress...';
-                isRecording = true;
-            }
-        };
-
-        // New Translate Sound Button logic
-        document.getElementById('translateSoundBtn').onclick = () => {
-            alert('Sound translation is in progress...');
-            // Add custom translation logic here.
-        };
-    </script>
+    function getCookie(name) {
+      const nameEQ = name + "=";
+      const ca = document.cookie.split(';');
+      for (let i = 0; i < ca.length; i++) {
+        let c = ca[i];
+        while (c.charAt(0) === ' ') c = c.substring(1, c.length);
+        if (c.indexOf(nameEQ) === 0) return c.substring(nameEQ.length, c.length);
+      }
+      return null;
+    }
+  </script>
 </body>
+</html>
 </html>
