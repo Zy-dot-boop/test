@@ -1,10 +1,9 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Baby Sound Translator</title>
-  <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs"></script> <!-- TensorFlow.js -->
   <style>
     body {
       font-family: Arial, sans-serif;
@@ -14,73 +13,38 @@
       padding: 20px;
       min-height: 100vh;
     }
-
-    .dark-mode {
-      background-color: #333;
-      color: #fff;
-    }
-
-    .container {
-      text-align: center;
-    }
-
+    .dark-mode { background-color: #333; color: #fff; }
+    .container { text-align: center; }
     button {
       padding: 10px 20px;
       font-size: 16px;
       margin: 10px;
       cursor: pointer;
-    }
-
-    .mode-btn {
-      background-color: #008cba;
-      color: white;
       border: none;
       border-radius: 5px;
     }
-
-    .train-btn {
-      background-color: #f0ad4e;
-      color: white;
+    .mode-btn { background-color: #008cba; color: white; }
+    .train-btn { background-color: #f0ad4e; color: white; }
+    .export-btn { background-color: #4CAF50; color: white; }
+    .input-box { margin-top: 20px; }
+    input[type="text"] { padding: 10px; font-size: 16px; width: 80%; margin: 10px 0; }
+    .recording-status { font-size: 18px; color: #f0ad4e; }
+    #translation { margin-top: 20px; font-size: 1.5em; font-weight: bold; }
+    #soundMeter {
+      width: 80%; height: 20px; background: #ccc;
+      margin: 20px auto; border-radius: 10px; overflow: hidden;
     }
-
-    .export-btn {
-      background-color: #4CAF50;
-      color: white;
-    }
-
-    .input-box {
-      margin-top: 20px;
-    }
-
-    input[type="text"] {
-      padding: 10px;
-      font-size: 16px;
-      width: 80%;
-      margin: 10px 0;
-    }
-
-    .recording-status {
-      font-size: 18px;
-      color: #f0ad4e;
-    }
-
-    #translation {
-      margin-top: 20px;
-      font-size: 1.5em;
-      font-weight: bold;
-    }
+    #soundLevel { height: 100%; background: #4CAF50; width: 0%; }
   </style>
 </head>
 <body>
   <div class="container">
     <h1>Baby Sound Translator</h1>
-
-    <!-- Dark/Light Mode Toggle -->
     <button class="mode-btn" onclick="toggleMode()">Toggle Dark/Light Mode</button>
 
     <!-- Recording Section -->
     <div class="train-container">
-      <h2>Record and Train Baby Sounds</h2>
+      <h2>Train: Record Baby Sounds</h2>
       <button class="train-btn" id="startRecordingBtn" onclick="startRecording()">Start Recording</button>
       <button class="train-btn" id="stopRecordingBtn" onclick="stopRecording()" disabled>Stop Recording</button>
 
@@ -92,102 +56,103 @@
       <div class="recording-status" id="recordingStatus">Recording status: Idle</div>
     </div>
 
+    <!-- Live Sound Meter -->
+    <div id="soundMeter"><div id="soundLevel"></div></div>
+
     <!-- Translation Output -->
     <div id="translation">Waiting for sound...</div>
 
+    <!-- Translate Button -->
+    <button class="train-btn" onclick="startTranslation()">Start Translating</button>
+    <button class="train-btn" onclick="stopTranslation()">Stop Translating</button>
+
     <!-- Export Data Button -->
     <button class="export-btn" onclick="exportData()">Export Data</button>
-
   </div>
 
   <script>
     let isRecording = false;
+    let isTranslating = false;
     let soundData = loadSavedData(); // Load saved sound data
-    let audioContext;
-    let analyser;
-    let microphone;
-    let dataArray;
-    let currentRecording = null;
+    let audioContext, analyser, microphone, dataArray;
 
-    // Initialize the audio context and microphone
     window.onload = function() {
-      // Initialize audio context
       audioContext = new (window.AudioContext || window.webkitAudioContext)();
       analyser = audioContext.createAnalyser();
-
-      // Check the mode from cookies
-      const currentMode = getCookie("mode");
-      if (currentMode) {
-        document.body.classList.toggle("dark-mode", currentMode === "dark");
-      }
-
-      // Start listening to audio input
       navigator.mediaDevices.getUserMedia({ audio: true })
         .then((stream) => {
           microphone = audioContext.createMediaStreamSource(stream);
           microphone.connect(analyser);
           analyser.fftSize = 256;
           dataArray = new Uint8Array(analyser.frequencyBinCount);
-
-          listenForSounds();  // Start listening immediately after the page loads
+          animateMeter(); // start sound meter animation
         })
-        .catch(err => {
-          console.error('Error accessing audio devices:', err);
-        });
-
-      // Load the model if it exists in localStorage
-      loadModel();
+        .catch(err => console.error('Error accessing audio devices:', err));
     }
 
-    // Continuously process the audio data and listen for baby sounds
-    function listenForSounds() {
+    // Animate sound meter
+    function animateMeter() {
       analyser.getByteFrequencyData(dataArray);
       const soundLevel = Math.max(...dataArray);
-
-      // If sound is detected
-      if (soundLevel > 100 && currentRecording === null) {
-        classifySound(dataArray);
-      } else {
-        setTimeout(listenForSounds, 20000); // wait 20s before checking again
-      }
+      const meterWidth = Math.min((soundLevel / 255) * 100, 100);
+      document.getElementById("soundLevel").style.width = meterWidth + "%";
+      requestAnimationFrame(animateMeter);
     }
 
-    // Extract features from the frequency data
+    // Extract features (average frequency in this case)
     function extractFeatures(data) {
-      const averageFrequency = data.reduce((sum, value) => sum + value, 0) / data.length;
-      return [averageFrequency];
+      const avg = data.reduce((sum, value) => sum + value, 0) / data.length;
+      return [avg];
     }
 
-    // Classify the sound using the model
+    // Classify sound
     function classifySound(features) {
       const soundFeatures = extractFeatures(features);
-
       let bestMatch = null;
       let bestDiff = Infinity;
 
       soundData.forEach(item => {
-        // Fake similarity: compare lengths of stored dataURL
-        let diff = Math.abs(item.audio.length - soundFeatures[0] * 100);
+        let diff = Math.abs(item.features[0] - soundFeatures[0]);
         if (diff < bestDiff) {
           bestDiff = diff;
           bestMatch = item;
         }
       });
 
-      if (bestMatch && bestDiff < 500) {
+      if (bestMatch && bestDiff < 40) {
         document.getElementById("translation").innerText = "Translation: " + bestMatch.meaning;
       } else {
-        alert("Sound detected but couldn't be recognized!");
         document.getElementById("translation").innerText = "Translation: Unknown sound detected.";
       }
     }
 
-    // Start recording the sound
+    // Loop for recording (training)
+    function recordingLoop() {
+      if (isRecording) {
+        analyser.getByteFrequencyData(dataArray);
+        requestAnimationFrame(recordingLoop);
+      }
+    }
+
+    // Loop for translating
+    function translationLoop() {
+      if (isTranslating) {
+        analyser.getByteFrequencyData(dataArray);
+        const soundLevel = Math.max(...dataArray);
+        if (soundLevel > 60) { // threshold
+          classifySound(dataArray);
+        }
+        requestAnimationFrame(translationLoop);
+      }
+    }
+
+    // Start recording
     function startRecording() {
       isRecording = true;
       document.getElementById("startRecordingBtn").disabled = true;
       document.getElementById("stopRecordingBtn").disabled = false;
       document.getElementById("recordingStatus").innerText = "Recording... Please make a sound.";
+      recordingLoop();
     }
 
     // Stop recording
@@ -195,27 +160,42 @@
       isRecording = false;
       document.getElementById("startRecordingBtn").disabled = false;
       document.getElementById("stopRecordingBtn").disabled = true;
-      document.getElementById("recordingStatus").innerText = "Recording stopped. Please enter the meaning.";
+      document.getElementById("recordingStatus").innerText = "Recording stopped. Enter a meaning and save.";
     }
 
-    // Save sound and its meaning
+    // Save sound after stopping
     function saveSound() {
       const soundMeaning = document.getElementById("soundMeaning").value.trim();
-      if (soundMeaning && currentRecording) {
-        const reader = new FileReader();
-        reader.onload = () => {
-          soundData.push({ audio: reader.result, meaning: soundMeaning });
-          saveDataToLocalStorage();
-          alert("Sound saved successfully!");
-        };
-        reader.readAsDataURL(currentRecording);
+      if (soundMeaning) {
+        analyser.getByteFrequencyData(dataArray);
+        const features = extractFeatures(dataArray);
+        soundData.push({ features, meaning: soundMeaning });
+        saveDataToLocalStorage();
+        alert("Sound saved successfully!");
         document.getElementById("soundMeaning").value = "";
       } else {
-        alert("Please record and enter a meaning for the sound.");
+        alert("Please enter a meaning for the sound.");
       }
     }
 
-    // Export the recorded data
+    // Start translating
+    function startTranslation() {
+      if (!soundData.length) {
+        alert("No trained sounds yet. Please record and save first!");
+        return;
+      }
+      isTranslating = true;
+      document.getElementById("translation").innerText = "Listening for sounds...";
+      translationLoop();
+    }
+
+    // Stop translating
+    function stopTranslation() {
+      isTranslating = false;
+      document.getElementById("translation").innerText = "Translation stopped.";
+    }
+
+    // Export sound data
     function exportData() {
       if (soundData.length === 0) {
         alert("No data to export.");
@@ -228,52 +208,19 @@
       link.click();
     }
 
-    // Save sound data to localStorage
+    // Save/load from localStorage
     function saveDataToLocalStorage() {
       localStorage.setItem("soundData", JSON.stringify(soundData));
     }
-
-    // Load sound data from localStorage
     function loadSavedData() {
       const savedData = localStorage.getItem("soundData");
       return savedData ? JSON.parse(savedData) : [];
     }
 
-    // Load the model from localStorage
-    function loadModel() {
-      tf.loadLayersModel('localstorage://baby-sound-model').then((loadedModel) => {
-        model = loadedModel;
-        console.log('Model loaded!');
-      }).catch(() => {
-        console.log('No saved model found.');
-      });
-    }
-
-    // Toggle Dark/Light Mode
+    // Dark mode toggle
     function toggleMode() {
       document.body.classList.toggle("dark-mode");
-      // Save mode preference in cookie
-      setCookie("mode", document.body.classList.contains("dark-mode") ? "dark" : "light", 365);
-    }
-
-    // Cookie functions
-    function setCookie(name, value, days) {
-      const expires = new Date();
-      expires.setTime(expires.getTime() + (days * 24 * 60 * 60 * 1000));
-      document.cookie = `${name}=${value};expires=${expires.toUTCString()};path=/`;
-    }
-
-    function getCookie(name) {
-      const nameEQ = name + "=";
-      const ca = document.cookie.split(';');
-      for (let i = 0; i < ca.length; i++) {
-        let c = ca[i];
-        while (c.charAt(0) === ' ') c = c.substring(1, c.length);
-        if (c.indexOf(nameEQ) === 0) return c.substring(nameEQ.length, c.length);
-      }
-      return null;
     }
   </script>
 </body>
-</html>
 </html>
