@@ -2,8 +2,14 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>Baby Sound Translator</title>
+
+  <!-- TensorFlow.js -->
+  <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4"></script>
+  <!-- Meyda for audio features (MFCC, RMS, etc.) -->
+  <script src="https://unpkg.com/meyda/dist/web/meyda.min.js"></script>
+
   <style>
     body {
       font-family: Arial, sans-serif;
@@ -14,213 +20,300 @@
       min-height: 100vh;
     }
     .dark-mode { background-color: #333; color: #fff; }
-    .container { text-align: center; }
-    button {
-      padding: 10px 20px;
-      font-size: 16px;
-      margin: 10px;
-      cursor: pointer;
-      border: none;
-      border-radius: 5px;
-    }
+    .container { max-width: 800px; margin: 0 auto; text-align: center; }
+    button { padding: 10px 16px; font-size: 16px; margin: 6px; cursor: pointer; border-radius: 8px; border: none; }
     .mode-btn { background-color: #008cba; color: white; }
     .train-btn { background-color: #f0ad4e; color: white; }
     .export-btn { background-color: #4CAF50; color: white; }
-    .input-box { margin-top: 20px; }
-    input[type="text"] { padding: 10px; font-size: 16px; width: 80%; margin: 10px 0; }
-    .recording-status { font-size: 18px; color: #f0ad4e; }
-    #translation { margin-top: 20px; font-size: 1.5em; font-weight: bold; }
-    #soundMeter {
-      width: 80%; height: 20px; background: #ccc;
-      margin: 20px auto; border-radius: 10px; overflow: hidden;
+    .input-box { margin-top: 16px; }
+    input[type="text"] {
+      padding: 10px; font-size: 16px; width: 80%; margin: 8px 0; border-radius: 8px; border: 1px solid #ccc;
     }
-    #soundLevel { height: 100%; background: #4CAF50; width: 0%; }
+    .recording-status { font-size: 18px; color: #f0ad4e; margin-top: 8px; }
+    #translation { margin-top: 16px; font-size: 1.5em; font-weight: bold; }
+    .row { display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; }
+    .small { opacity: 0.8; font-size: 0.9em; }
+    .card { background: white; border-radius: 16px; padding: 16px; margin-top: 16px; box-shadow: 0 6px 18px rgba(0,0,0,0.08); }
+    .dark-mode .card { background: #444; }
+    .url-input { width: 100%; max-width: 680px; }
   </style>
 </head>
 <body>
   <div class="container">
     <h1>Baby Sound Translator</h1>
-    <button class="mode-btn" onclick="toggleMode()">Toggle Dark/Light Mode</button>
 
-    <!-- Recording Section -->
-    <div class="train-container">
-      <h2>Train: Record Baby Sounds</h2>
-      <button class="train-btn" id="startRecordingBtn" onclick="startRecording()">Start Recording</button>
-      <button class="train-btn" id="stopRecordingBtn" onclick="stopRecording()" disabled>Stop Recording</button>
+    <!-- Theme -->
+    <div class="row">
+      <button class="mode-btn" onclick="toggleMode()">Toggle Dark/Light</button>
+    </div>
+
+    <!-- Model loader -->
+    <div class="card">
+      <h2>Model</h2>
+      <p class="small">Host your model on GitHub Pages and paste its base URL here. Example: <code>https://YOUR-USER.github.io/YOUR-REPO/model</code></p>
+      <input id="modelUrl" class="url-input" type="text" placeholder="https://YOUR-USER.github.io/YOUR-REPO/model" />
+      <div class="row">
+        <button class="train-btn" onclick="loadRemoteModel()">Load Model</button>
+        <button class="train-btn" onclick="unloadModel()">Unload Model</button>
+      </div>
+      <div id="modelStatus" class="small">Model: not loaded</div>
+    </div>
+
+    <!-- Recording / dataset -->
+    <div class="card">
+      <h2>Record & Label</h2>
+      <div class="row">
+        <button class="train-btn" id="startRecordingBtn" onclick="startRecording()">Start Recording</button>
+        <button class="train-btn" id="stopRecordingBtn" onclick="stopRecording()" disabled>Stop Recording</button>
+        <button class="train-btn" id="playRecordingBtn" onclick="playRecording()" disabled>Play Recording</button>
+      </div>
 
       <div class="input-box">
-        <input type="text" id="soundMeaning" placeholder="Enter the meaning of the sound">
+        <input type="text" id="soundMeaning" placeholder="Enter the meaning (e.g., hungry, sleepy, discomfort)" />
         <button class="train-btn" onclick="saveSound()">Save Sound</button>
+      </div>
+      <div class="row">
+        <button class="export-btn" onclick="exportData()">Export Labeled Data (JSON)</button>
       </div>
 
       <div class="recording-status" id="recordingStatus">Recording status: Idle</div>
+      <div class="small" id="datasetCount"></div>
     </div>
 
-    <!-- Live Sound Meter -->
-    <div id="soundMeter"><div id="soundLevel"></div></div>
-
-    <!-- Translation Output -->
-    <div id="translation">Waiting for sound...</div>
-
-    <!-- Translate Button -->
-    <button class="train-btn" onclick="startTranslation()">Start Translating</button>
-    <button class="train-btn" onclick="stopTranslation()">Stop Translating</button>
-
-    <!-- Export Data Button -->
-    <button class="export-btn" onclick="exportData()">Export Data</button>
+    <!-- Live translation -->
+    <div class="card">
+      <h2>Live Translation</h2>
+      <div id="translation">Waiting for sound...</div>
+      <div class="small">Tip: keep baby noise near the mic; we analyze MFCCs every ~200ms.</div>
+    </div>
   </div>
 
   <script>
+    // ====== CONFIG ======
+    // While testing you can leave this blank and paste your URL in the box above.
+    // After you publish to GitHub Pages, set it here to auto-load each visit:
+    const MODEL_BASE_URL_DEFAULT = ""; // e.g. "https://YOUR-USER.github.io/YOUR-REPO/model"
+    // ====================
+
     let isRecording = false;
-    let isTranslating = false;
-    let soundData = loadSavedData(); // Load saved sound data
-    let audioContext, analyser, microphone, dataArray;
+    let soundData = loadSavedData();
+    let audioContext, analyserNode, micSource;
+    let currentRecording = null;
+    let mediaRecorder, recordedChunks = [];
+    let meydaAnalyzer = null;
+    let model = null;
+    let labels = [];
+    let listenTimer = null;
 
-    window.onload = function() {
-      audioContext = new (window.AudioContext || window.webkitAudioContext)();
-      analyser = audioContext.createAnalyser();
-      navigator.mediaDevices.getUserMedia({ audio: true })
-        .then((stream) => {
-          microphone = audioContext.createMediaStreamSource(stream);
-          microphone.connect(analyser);
-          analyser.fftSize = 256;
-          dataArray = new Uint8Array(analyser.frequencyBinCount);
-          animateMeter(); // start sound meter animation
-        })
-        .catch(err => console.error('Error accessing audio devices:', err));
-    }
+    // Update dataset count on load
+    updateDatasetCount();
 
-    // Animate sound meter
-    function animateMeter() {
-      analyser.getByteFrequencyData(dataArray);
-      const soundLevel = Math.max(...dataArray);
-      const meterWidth = Math.min((soundLevel / 255) * 100, 100);
-      document.getElementById("soundLevel").style.width = meterWidth + "%";
-      requestAnimationFrame(animateMeter);
-    }
+    window.onload = async function() {
+      // Theme by cookie
+      const currentMode = getCookie("mode");
+      if (currentMode) document.body.classList.toggle("dark-mode", currentMode === "dark");
 
-    // Extract features (average frequency in this case)
-    function extractFeatures(data) {
-      const avg = data.reduce((sum, value) => sum + value, 0) / data.length;
-      return [avg];
-    }
+      // Audio setup
+      try {
+        audioContext = new (window.AudioContext || window.webkitAudioContext)();
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        micSource = audioContext.createMediaStreamSource(stream);
 
-    // Classify sound
-    function classifySound(features) {
-      const soundFeatures = extractFeatures(features);
-      let bestMatch = null;
-      let bestDiff = Infinity;
+        // Analyzer used for meyda
+        analyserNode = audioContext.createAnalyser();
+        analyserNode.fftSize = 2048;
+        micSource.connect(analyserNode);
 
-      soundData.forEach(item => {
-        let diff = Math.abs(item.features[0] - soundFeatures[0]);
-        if (diff < bestDiff) {
-          bestDiff = diff;
-          bestMatch = item;
+        // Start feature loop
+        startMeyda();
+      } catch (err) {
+        console.error("Microphone error:", err);
+        alert("Mic access failed. Use HTTPS (GitHub Pages is OK) and allow microphone.");
+      }
+
+      // Auto-fill model URL if default provided
+      if (MODEL_BASE_URL_DEFAULT) {
+        document.getElementById('modelUrl').value = MODEL_BASE_URL_DEFAULT;
+        loadRemoteModel();
+      }
+    };
+
+    function startMeyda() {
+      if (!window.Meyda) {
+        console.warn("Meyda not available");
+        return;
+      }
+      // Use Meyda analyzer for live MFCC
+      meydaAnalyzer = Meyda.createMeydaAnalyzer({
+        audioContext,
+        source: micSource,
+        bufferSize: 2048,
+        featureExtractors: ["mfcc"],
+        callback: (features) => {
+          // Throttle via timer, we also run classification below
         }
       });
-
-      if (bestMatch && bestDiff < 40) {
-        document.getElementById("translation").innerText = "Translation: " + bestMatch.meaning;
-      } else {
-        document.getElementById("translation").innerText = "Translation: Unknown sound detected.";
-      }
+      meydaAnalyzer.start();
+      // Poll every 200ms for classification
+      listenTimer = setInterval(liveClassifyTick, 200);
     }
 
-    // Loop for recording (training)
-    function recordingLoop() {
-      if (isRecording) {
-        analyser.getByteFrequencyData(dataArray);
-        requestAnimationFrame(recordingLoop);
-      }
+    function stopMeyda() {
+      if (meydaAnalyzer) meydaAnalyzer.stop();
+      if (listenTimer) clearInterval(listenTimer);
     }
 
-    // Loop for translating
-    function translationLoop() {
-      if (isTranslating) {
-        analyser.getByteFrequencyData(dataArray);
-        const soundLevel = Math.max(...dataArray);
-        if (soundLevel > 60) { // threshold
-          classifySound(dataArray);
+    async function liveClassifyTick() {
+      if (!meydaAnalyzer) return;
+      const out = meydaAnalyzer.get("mfcc");
+      if (!out || !Array.isArray(out) || out.length === 0) return;
+
+      // We’ll use first 13 MFCCs (Meyda default=13)
+      const mfcc13 = out.slice(0, 13);
+      const features = mfcc13.map(v => (isFinite(v) ? v : 0));
+
+      if (model && labels && labels.length > 0) {
+        try {
+          const input = tf.tensor([features]);
+          const pred = model.predict(input);
+          const probs = await pred.data();
+          input.dispose();
+          pred.dispose();
+
+          let bestIdx = 0, bestVal = -Infinity;
+          for (let i = 0; i < probs.length; i++) {
+            if (probs[i] > bestVal) { bestVal = probs[i]; bestIdx = i; }
+          }
+          const label = labels[bestIdx] || "Unknown";
+          document.getElementById("translation").innerText =
+            `Translation: ${label}  (confidence ${(bestVal*100).toFixed(1)}%)`;
+        } catch (e) {
+          console.error("Prediction error:", e);
+          document.getElementById("translation").innerText = "Translation: (model error)";
         }
-        requestAnimationFrame(translationLoop);
+      } else {
+        // Fallback: no model loaded
+        document.getElementById("translation").innerText = "Translation: (no model loaded)";
       }
     }
 
-    // Start recording
-    function startRecording() {
+    // ===== Recording & Dataset =====
+    async function startRecording() {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      mediaRecorder = new MediaRecorder(stream);
+      recordedChunks = [];
+      mediaRecorder.ondataavailable = e => { if (e.data.size > 0) recordedChunks.push(e.data); };
+      mediaRecorder.onstop = () => {
+        currentRecording = new Blob(recordedChunks, { type: "audio/webm" });
+        document.getElementById("playRecordingBtn").disabled = !currentRecording;
+      };
+      mediaRecorder.start();
       isRecording = true;
       document.getElementById("startRecordingBtn").disabled = true;
       document.getElementById("stopRecordingBtn").disabled = false;
       document.getElementById("recordingStatus").innerText = "Recording... Please make a sound.";
-      recordingLoop();
     }
 
-    // Stop recording
     function stopRecording() {
-      isRecording = false;
-      document.getElementById("startRecordingBtn").disabled = false;
-      document.getElementById("stopRecordingBtn").disabled = true;
-      document.getElementById("recordingStatus").innerText = "Recording stopped. Enter a meaning and save.";
+      if (mediaRecorder && isRecording) {
+        mediaRecorder.stop();
+        isRecording = false;
+        document.getElementById("startRecordingBtn").disabled = false;
+        document.getElementById("stopRecordingBtn").disabled = true;
+        document.getElementById("recordingStatus").innerText = "Recording stopped. Enter a meaning then Save.";
+      }
     }
 
-    // Save sound after stopping
+    function playRecording() {
+      if (!currentRecording) return alert("No recording available to play.");
+      const audioURL = URL.createObjectURL(currentRecording);
+      new Audio(audioURL).play();
+    }
+
     function saveSound() {
-      const soundMeaning = document.getElementById("soundMeaning").value.trim();
-      if (soundMeaning) {
-        analyser.getByteFrequencyData(dataArray);
-        const features = extractFeatures(dataArray);
-        soundData.push({ features, meaning: soundMeaning });
+      const meaning = document.getElementById("soundMeaning").value.trim();
+      if (!meaning || !currentRecording) {
+        alert("Please record and enter a meaning.");
+        return;
+      }
+      const reader = new FileReader();
+      reader.onload = () => {
+        soundData.push({ audio: reader.result, meaning });
         saveDataToLocalStorage();
-        alert("Sound saved successfully!");
-        document.getElementById("soundMeaning").value = "";
-      } else {
-        alert("Please enter a meaning for the sound.");
-      }
+        updateDatasetCount();
+        alert("Saved!");
+      };
+      reader.readAsDataURL(currentRecording);
+      document.getElementById("soundMeaning").value = "";
+      currentRecording = null;
+      document.getElementById("playRecordingBtn").disabled = true;
     }
 
-    // Start translating
-    function startTranslation() {
-      if (!soundData.length) {
-        alert("No trained sounds yet. Please record and save first!");
-        return;
-      }
-      isTranslating = true;
-      document.getElementById("translation").innerText = "Listening for sounds...";
-      translationLoop();
-    }
-
-    // Stop translating
-    function stopTranslation() {
-      isTranslating = false;
-      document.getElementById("translation").innerText = "Translation stopped.";
-    }
-
-    // Export sound data
     function exportData() {
-      if (soundData.length === 0) {
-        alert("No data to export.");
-        return;
-      }
-      const dataBlob = new Blob([JSON.stringify(soundData, null, 2)], { type: 'application/json' });
-      const link = document.createElement('a');
-      link.href = URL.createObjectURL(dataBlob);
-      link.download = 'baby-sound-data.json';
-      link.click();
+      if (!soundData.length) return alert("No data to export.");
+      const blob = new Blob([JSON.stringify(soundData, null, 2)], { type: 'application/json' });
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = 'baby-sound-data.json';
+      a.click();
     }
 
-    // Save/load from localStorage
+    function updateDatasetCount() {
+      document.getElementById("datasetCount").innerText = `Samples saved in browser: ${soundData.length}`;
+    }
+
     function saveDataToLocalStorage() {
       localStorage.setItem("soundData", JSON.stringify(soundData));
     }
+
     function loadSavedData() {
-      const savedData = localStorage.getItem("soundData");
-      return savedData ? JSON.parse(savedData) : [];
+      const saved = localStorage.getItem("soundData");
+      return saved ? JSON.parse(saved) : [];
     }
 
-    // Dark mode toggle
+    // ===== Model loading from GitHub Pages =====
+    async function loadRemoteModel() {
+      const base = document.getElementById('modelUrl').value.trim();
+      if (!base) return alert("Enter your model base URL first.");
+      try {
+        model && model.dispose();
+        model = await tf.loadLayersModel(`${base}/model.json`);
+        labels = await fetch(`${base}/labels.json`).then(r => r.json());
+        document.getElementById("modelStatus").innerText = `Model: loaded from ${base}`;
+      } catch (e) {
+        console.error(e);
+        alert("Failed to load model or labels. Check your URL and files.");
+      }
+    }
+
+    function unloadModel() {
+      if (model) model.dispose();
+      model = null;
+      labels = [];
+      document.getElementById("modelStatus").innerText = "Model: not loaded";
+    }
+
+    // ===== Theme & Cookies =====
     function toggleMode() {
       document.body.classList.toggle("dark-mode");
+      setCookie("mode", document.body.classList.contains("dark-mode") ? "dark" : "light", 365);
     }
+    function setCookie(name, value, days) {
+      const expires = new Date(Date.now() + days*864e5).toUTCString();
+      document.cookie = `${name}=${value};expires=${expires};path=/`;
+    }
+    function getCookie(name) {
+      const nameEQ = name + "=";
+      const ca = document.cookie.split(';');
+      for (let c of ca) {
+        c = c.trim();
+        if (c.indexOf(nameEQ) === 0) return c.substring(nameEQ.length);
+      }
+      return null;
+    }
+
+    // Cleanup on unload
+    window.addEventListener('beforeunload', stopMeyda);
   </script>
 </body>
 </html>
