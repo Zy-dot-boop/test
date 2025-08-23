@@ -4,184 +4,129 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>Baby Sound Translator</title>
-
-  <!-- TensorFlow.js -->
-  <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@latest"></script>
-  <!-- Meyda for audio features -->
-  <script src="https://unpkg.com/meyda/dist/web/meyda.min.js"></script>
-
   <style>
-    body { font-family: Arial, sans-serif; background-color: #f0f0f0; transition: background-color 0.3s, color 0.3s; color: #000; padding: 20px; min-height: 100vh; }
-    .dark-mode { background-color: #333; color: #fff; }
-    .container { max-width: 800px; margin: 0 auto; text-align: center; }
-    button { padding: 10px 16px; font-size: 16px; margin: 6px; cursor: pointer; border-radius: 8px; border: none; }
-    .mode-btn { background-color: #008cba; color: white; }
-    .train-btn { background-color: #f0ad4e; color: white; }
-    .export-btn { background-color: #4CAF50; color: white; }
-    .input-box { margin-top: 16px; }
-    input[type="text"] { padding: 10px; font-size: 16px; width: 80%; margin: 8px 0; border-radius: 8px; border: 1px solid #ccc; }
-    .recording-status { font-size: 18px; color: #f0ad4e; margin-top: 8px; }
-    #translation { margin-top: 16px; font-size: 1.5em; font-weight: bold; }
-    .row { display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; }
-    .small { opacity: 0.8; font-size: 0.9em; }
-    .card { background: white; border-radius: 16px; padding: 16px; margin-top: 16px; box-shadow: 0 6px 18px rgba(0,0,0,0.08); }
-    .dark-mode .card { background: #444; }
+    body {
+      font-family: Arial, sans-serif;
+      text-align: center;
+      margin: 40px;
+      background: #f9f9f9;
+    }
+    h1 {
+      color: #333;
+    }
+    button {
+      margin: 10px;
+      padding: 12px 20px;
+      font-size: 16px;
+      cursor: pointer;
+      border: none;
+      border-radius: 8px;
+      background-color: #4CAF50;
+      color: white;
+    }
+    button:disabled {
+      background-color: #aaa;
+      cursor: not-allowed;
+    }
+    #status {
+      margin: 20px;
+      font-weight: bold;
+    }
+    #prediction {
+      margin-top: 20px;
+      font-size: 18px;
+      color: #222;
+    }
   </style>
 </head>
 <body>
-  <div class="container">
-    <h1>Baby Sound Translator</h1>
+  <h1>Baby Sound Translator 👶🎤</h1>
+  <p id="status">Loading model...</p>
+  
+  <button id="startBtn">🎙 Start Recording</button>
+  <button id="stopBtn" disabled>🛑 Stop Recording</button>
 
-    <!-- Theme Toggle -->
-    <div class="row">
-      <button class="mode-btn" onclick="toggleMode()">Toggle Dark/Light</button>
-    </div>
+  <div id="prediction">Prediction: (waiting...)</div>
 
-    <!-- Recording Section -->
-    <div class="card">
-      <h2>Record & Label</h2>
-      <div class="row">
-        <button class="train-btn" id="startRecordingBtn" onclick="startRecording()">Start Recording</button>
-        <button class="train-btn" id="stopRecordingBtn" onclick="stopRecording()" disabled>Stop Recording</button>
-        <button class="train-btn" id="playRecordingBtn" onclick="playRecording()" disabled>Play Recording</button>
-      </div>
-      <div class="input-box">
-        <input type="text" id="soundMeaning" placeholder="Enter the meaning (e.g., hungry, sleepy)" />
-        <button class="train-btn" onclick="saveSound()">Save Sound</button>
-      </div>
-      <div class="row">
-        <button class="export-btn" onclick="exportData()">Export Labeled Data (JSON)</button>
-      </div>
-      <div class="recording-status" id="recordingStatus">Recording status: Idle</div>
-      <div class="small" id="datasetCount"></div>
-    </div>
-
-    <!-- Live Translation -->
-    <div class="card">
-      <h2>Live Translation</h2>
-      <div id="translation">Waiting for sound...</div>
-    </div>
-  </div>
+  <!-- Load TensorFlow.js -->
+  <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@latest"></script>
 
   <script>
-    // ====== Basic Variables ======
-    let isRecording = false;
-    let soundData = JSON.parse(localStorage.getItem("soundData") || "[]");
-    let audioContext, analyserNode, micSource, mediaRecorder, recordedChunks = [], currentRecording = null;
-    let model, labels = [], meydaAnalyzer = null, listenTimer = null;
+    let model;
+    let mediaRecorder;
+    let audioChunks = [];
 
-    updateDatasetCount();
-
-    window.onload = async function() {
-      // Theme from cookie
-      const mode = getCookie("mode");
-      if (mode) document.body.classList.toggle("dark-mode", mode === "dark");
-
-      // Audio setup
-      try {
-        audioContext = new (window.AudioContext || window.webkitAudioContext)();
-        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-        micSource = audioContext.createMediaStreamSource(stream);
-        analyserNode = audioContext.createAnalyser();
-        analyserNode.fftSize = 2048;
-        micSource.connect(analyserNode);
-        startMeyda();
-      } catch(e){console.error(e); alert("Mic access denied or not supported.");}
-    };
-
-    // ====== Recording Functions ======
-    async function startRecording() {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      mediaRecorder = new MediaRecorder(stream);
-      recordedChunks = [];
-      mediaRecorder.ondataavailable = e => { if(e.data.size>0) recordedChunks.push(e.data); };
-      mediaRecorder.onstop = () => {
-        currentRecording = new Blob(recordedChunks,{type:"audio/webm"});
-        document.getElementById("playRecordingBtn").disabled = !currentRecording;
-      };
-      mediaRecorder.start();
-      isRecording = true;
-      document.getElementById("startRecordingBtn").disabled = true;
-      document.getElementById("stopRecordingBtn").disabled = false;
-      document.getElementById("recordingStatus").innerText="Recording...";
-    }
-
-    function stopRecording() {
-      if(mediaRecorder && isRecording){mediaRecorder.stop(); isRecording=false;}
-      document.getElementById("startRecordingBtn").disabled=false;
-      document.getElementById("stopRecordingBtn").disabled=true;
-      document.getElementById("recordingStatus").innerText="Recording stopped. Enter meaning then save.";
-    }
-
-    function playRecording(){ if(!currentRecording) return alert("No recording."); new Audio(URL.createObjectURL(currentRecording)).play(); }
-
-    function saveSound() {
-      const meaning = document.getElementById("soundMeaning").value.trim();
-      if(!meaning || !currentRecording){alert("Record and enter meaning."); return;}
-      const reader = new FileReader();
-      reader.onload = ()=>{ soundData.push({audio:reader.result,meaning}); localStorage.setItem("soundData",JSON.stringify(soundData)); updateDatasetCount(); alert("Saved!"); };
-      reader.readAsDataURL(currentRecording);
-      document.getElementById("soundMeaning").value=""; currentRecording=null;
-      document.getElementById("playRecordingBtn").disabled=true;
-    }
-
-    function exportData() {
-      if(!soundData.length) return alert("No data."); 
-      const blob=new Blob([JSON.stringify(soundData,null,2)],{type:'application/json'});
-      const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download='baby-sound-data.json'; a.click();
-    }
-
-    function updateDatasetCount(){ document.getElementById("datasetCount").innerText=`Samples saved: ${soundData.length}`; }
-
-    // ====== Live Features ======
-    function startMeyda() {
-      if(!window.Meyda) return;
-      meydaAnalyzer = Meyda.createMeydaAnalyzer({
-        audioContext,
-        source: micSource,
-        bufferSize:2048,
-        featureExtractors:["mfcc"],
-        callback:()=>{}
-      });
-      meydaAnalyzer.start();
-      listenTimer=setInterval(liveClassifyTick,200);
-    }
-
-    async function liveClassifyTick() {
-      if(!meydaAnalyzer || !model || !labels.length) return;
-      const mfcc = meydaAnalyzer.get("mfcc");
-      if(!mfcc) return;
-      const input = tf.tensor([mfcc.slice(0,13)]);
-      const pred = model.predict(input);
-      const probs = await pred.data(); input.dispose(); pred.dispose();
-      let bestIdx=0,bestVal=-Infinity;
-      for(let i=0;i<probs.length;i++){if(probs[i]>bestVal){bestVal=probs[i];bestIdx=i;}}
-      document.getElementById("translation").innerText=`Translation: ${labels[bestIdx]} (${(bestVal*100).toFixed(1)}%)`;
-    }
-
-    // ====== Theme & Cookies ======
-    function toggleMode(){ document.body.classList.toggle("dark-mode"); setCookie("mode",document.body.classList.contains("dark-mode")?"dark":"light",365); }
-    function setCookie(name,value,days){const e=new Date(Date.now()+days*864e5).toUTCString(); document.cookie=`${name}=${value};expires=${e};path=/`; }
-    function getCookie(name){const n=name+"=";return document.cookie.split(';').map(c=>c.trim()).find(c=>c.indexOf(n)===0)?.substring(n.length) || null; }
-
-  </script>
-
-  <!-- ====== TensorFlow.js Model Loader ====== -->
-  <script>
     async function loadModel() {
       try {
-        // Use relative path if model folder is in same repo
-        const modelURL = "model/model.json";
+        // ✅ Correct model path
+        const modelURL = "model/tfjs_model/model.json";
         model = await tf.loadLayersModel(modelURL);
-        // Load labels.json
-        labels = await fetch("model/labels.json").then(r=>r.json());
-        console.log("✅ Model loaded successfully!");
-      } catch(e){console.error("Model load error:",e); alert("Failed to load model.");}
+        console.log("✅ Model loaded!");
+        document.getElementById("status").textContent = "Model loaded successfully!";
+      } catch (error) {
+        console.error("❌ Failed to load model:", error);
+        document.getElementById("status").textContent = "Failed to load model.";
+      }
     }
 
-    // Load model on page load
+    // 🎙 Start recording
+    document.getElementById("startBtn").onclick = async () => {
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        mediaRecorder = new MediaRecorder(stream);
+        audioChunks = [];
+
+        mediaRecorder.ondataavailable = event => {
+          if (event.data.size > 0) audioChunks.push(event.data);
+        };
+
+        mediaRecorder.onstop = async () => {
+          const audioBlob = new Blob(audioChunks, { type: "audio/wav" });
+          processAudio(audioBlob);
+        };
+
+        mediaRecorder.start();
+        document.getElementById("status").textContent = "Recording...";
+        document.getElementById("startBtn").disabled = true;
+        document.getElementById("stopBtn").disabled = false;
+
+      } catch (err) {
+        console.error("Mic error:", err);
+        alert("Microphone access denied or not available.");
+      }
+    };
+
+    // 🛑 Stop recording
+    document.getElementById("stopBtn").onclick = () => {
+      if (mediaRecorder) {
+        mediaRecorder.stop();
+        document.getElementById("status").textContent = "Processing audio...";
+        document.getElementById("startBtn").disabled = false;
+        document.getElementById("stopBtn").disabled = true;
+      }
+    };
+
+    // 🎵 Process recorded audio → Tensor → Prediction
+    async function processAudio(blob) {
+      // For now, we’ll use dummy input until preprocessing is defined
+      // Replace this part with real audio preprocessing (e.g., MFCCs, spectrograms)
+      const dummyInput = tf.randomNormal([1, 100]); // Shape must match your model’s input
+
+      if (!model) {
+        alert("Model not loaded yet!");
+        return;
+      }
+
+      const prediction = model.predict(dummyInput);
+      const result = prediction.dataSync();
+
+      console.log("🔮 Prediction:", result);
+      document.getElementById("prediction").textContent = "Prediction: " + result.join(", ");
+      document.getElementById("status").textContent = "Ready!";
+    }
+
+    // Load model on page start
     window.onload = loadModel;
   </script>
-
 </body>
 </html>
